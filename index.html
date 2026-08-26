@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>SHAIBRO AI</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b141a;color:#e9edef;font-family:system-ui;min-height:100vh}
+header{background:#202c33;padding:14px 16px;display:flex;align-items:center;gap:12px}
+.logo{width:44px;height:44px;border-radius:50%;background:#00a884;display:grid;place-items:center;font-weight:900}
+.meta{min-width:0}.meta small{color:#8696a0}
+.status{margin-right:auto;font-size:12px;color:#53bdeb}
+.screen{padding:16px 16px 90px}
+.msg{background:#202c33;padding:12px 14px;border-radius:12px;margin:10px 0;line-height:1.65;max-width:88%;white-space:pre-wrap}
+.me{background:#005c4b;margin-right:auto}
+.quick{display:flex;gap:8px;overflow:auto;margin:14px 0}
+.quick button{white-space:nowrap;background:#18272f;border:1px solid #2a3942;color:white;padding:9px 12px;border-radius:18px}
+.panel{background:#111b21;border:1px solid #2a3942;border-radius:14px;padding:12px;margin:14px 0}
+.panel b{display:block;margin-bottom:6px}.muted{color:#8696a0;font-size:12px}
+footer{position:fixed;bottom:0;left:0;right:0;background:#202c33;padding:10px;display:flex;gap:8px}
+input{flex:1;background:#2a3942;border:0;color:white;border-radius:12px;padding:12px;font-size:16px;min-width:0}
+.send{background:#00a884;color:white;border:0;border-radius:12px;padding:0 16px;font-weight:700}
+.smallbtn{background:#18272f;border:1px solid #2a3942;color:white;border-radius:9px;padding:8px 10px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">S</div>
+  <div class="meta"><b>SHAIBRO AI</b><br><small>مساعدك التنفيذي</small></div>
+  <div id="status" class="status">● فحص الاتصال</div>
+</header>
+
+<div id="screen" class="screen">
+  <div class="msg">مرحباً 👋 أنا SHAIBRO AI. سأستخدم الخادم السحابي عندما يكون متصلاً، وأعود للوضع المحلي إذا تعذر الاتصال.</div>
+
+  <div class="panel">
+    <b>حالة الخادم</b>
+    <div id="serverUrl" class="muted"></div>
+    <button class="smallbtn" onclick="checkServer()">إعادة فحص الاتصال</button>
+  </div>
+
+  <div class="quick">
+    <button onclick="ask('رتب يومي')">رتب يومي</button>
+    <button onclick="ask('اعرض مهامي')">مهامي</button>
+    <button onclick="ask('اعرض أحدث ايميلاتي')">الإيميلات</button>
+  </div>
+</div>
+
+<footer>
+  <input id="input" placeholder="اكتب أمرك...">
+  <button class="send" onclick="send()">إرسال</button>
+</footer>
+
+<script>
+let tasks=JSON.parse(localStorage.getItem('tasks')||'[]');
+let API_BASE='';
+let API_TOKEN='';
+
+try{
+  if(window.ShaibroConfig && ShaibroConfig.getApiBaseUrl){
+    API_BASE=ShaibroConfig.getApiBaseUrl()||'';
+    if(ShaibroConfig.getApiToken){ API_TOKEN=ShaibroConfig.getApiToken()||''; }
+  }
+}catch(e){}
+
+document.getElementById('serverUrl').textContent=API_BASE||'لم يتم ضبط رابط الخادم بعد';
+
+function bubble(t,me=false){
+  const d=document.createElement('div');
+  d.className='msg'+(me?' me':'');
+  d.textContent=t;
+  document.getElementById('screen').appendChild(d);
+  window.scrollTo(0,document.body.scrollHeight);
+}
+
+async function checkServer(){
+  const s=document.getElementById('status');
+  if(!API_BASE || API_BASE.includes('YOUR-SHAIBRO-SERVER')){
+    s.textContent='● الوضع المحلي';
+    s.style.color='#8696a0';
+    return false;
+  }
+  try{
+    const r=await fetch(API_BASE.replace(/\/$/,'')+'/health');
+    if(!r.ok) throw new Error();
+    const j=await r.json();
+    s.textContent='● متصل بالسحابة v'+(j.version||'');
+    s.style.color='#53bdeb';
+    return true;
+  }catch(e){
+    s.textContent='● غير متصل — وضع محلي';
+    s.style.color='#8696a0';
+    return false;
+  }
+}
+
+function localReply(t){
+  if(t.includes('أضف مهمة')){
+    const x=t.replace('أضف مهمة','').trim()||'مهمة جديدة';
+    tasks.push(x);localStorage.setItem('tasks',JSON.stringify(tasks));
+    return 'تمت إضافة المهمة محلياً: '+x;
+  }
+  if(t.includes('مهام')) return tasks.length?'مهامك المحلية:\n'+tasks.map((x,i)=>(i+1)+'. '+x).join('\n'):'لا توجد مهام محلية بعد.';
+  if(t.includes('رتب يومي')) return tasks.length?'ابدأ بهذه المهام:\n'+tasks.map((x,i)=>(i+1)+'. '+x).join('\n'):'لا توجد مهام محلية لأرتبها.';
+  if(t.includes('إيميل')||t.includes('ايميل')) return 'ميزة Gmail تحتاج اتصال SHAIBRO AI Cloud وربط Google.';
+  return 'الوضع المحلي يعمل. بعد نشر الخادم ستحصل على الذكاء الاصطناعي وGmail وGoogle Calendar.';
+}
+
+async function cloudReply(t){
+  const r=await fetch(API_BASE.replace(/\/$/,'')+'/api/chat',{
+    method:'POST',
+    credentials:'include',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+API_TOKEN},
+    body:JSON.stringify({message:t})
+  });
+  if(!r.ok) throw new Error('cloud');
+  const j=await r.json();
+  return j.reply||'تم.';
+}
+
+async function ask(t){
+  bubble(t,true);
+  let response;
+  const online=await checkServer();
+  if(online){
+    try{ response=await cloudReply(t); }
+    catch(e){ response=localReply(t)+'\n\nتعذر استخدام الخادم؛ تم استخدام الوضع المحلي.'; }
+  }else{
+    response=localReply(t);
+  }
+  bubble(response);
+}
+
+function send(){
+  const i=document.getElementById('input'),t=i.value.trim();
+  if(!t)return;
+  i.value='';
+  ask(t);
+}
+
+document.getElementById('input').addEventListener('keydown',e=>{if(e.key==='Enter')send()});
+checkServer();
+</script>
+</body>
+</html>
